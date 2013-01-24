@@ -24,7 +24,7 @@ int scull_quantum = SCULL_QUANTUM;
 int scull_qset = SCULL_QSET;
 int scull_nr_devs = SCULL_NR_DEVS;
 
-
+/* FIXME OPPS messages! */
 int scull_open(struct inode *inode, struct file *filp)
 {
         struct scull_dev *dev;  /* device information */
