@@ -221,10 +221,14 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
                 printk(KERN_NOTICE "ERROR %d adding scull%d", err, index);
 }
 
-static int scull_init(void)
+static int __init scull_init(void)
 {
         int result;
         dev_t dev = 0;
+	/* 
+	 * FIXME: use kmalloc, should avoid using stack like the following
+	 * static allocation
+	 */
         struct scull_dev scull_dev;
 
         if (scull_major) {
@@ -247,7 +251,7 @@ static int scull_init(void)
         return 0;               /* succeed */
 }
 
-void scull_cleanup(void)
+static void __exit scull_cleanup(void)
 {
         dev_t devno = MKDEV(scull_major, scull_minor);
         unregister_chrdev_region(devno, scull_nr_devs);
