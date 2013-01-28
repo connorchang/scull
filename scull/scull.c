@@ -16,6 +16,7 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/semaphore.h>
 
 /* device number, should it be int type? */
 int scull_major = SCULL_MAJOR;
@@ -23,6 +24,8 @@ int scull_minor = 0;
 int scull_quantum = SCULL_QUANTUM;
 int scull_qset = SCULL_QSET;
 int scull_nr_devs = SCULL_NR_DEVS;
+
+struct scull_dev *scull_devices; /* allocated in scull_init */
 
 /* FIXME OPPS messages! */
 int scull_open(struct inode *inode, struct file *filp)
@@ -208,6 +211,23 @@ struct file_operations scull_fops = {
         .release = scull_release,
 };
 
+static void __exit scull_cleanup(void)
+{
+	int i;
+        dev_t devno = MKDEV(scull_major, scull_minor);
+	
+	if (scull_devices) {
+		for (i = 0; i < scull_nr_devs; i++) {
+			scull_trim(scull_devices + i);
+			cdev_del(&scull_devices[i].cdev);
+		}
+		kfree(scull_devices);
+	}
+		
+	/* cleanup module is never called if registering failed */
+        unregister_chrdev_region(devno, scull_nr_devs);
+}
+
 static void scull_setup_cdev(struct scull_dev *dev, int index)
 {
         int err, devno = MKDEV(scull_major, scull_minor + index);
@@ -223,13 +243,8 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
 
 static int __init scull_init(void)
 {
-        int result;
+        int result, i;
         dev_t dev = 0;
-	/* 
-	 * FIXME: use kmalloc, should avoid using stack like the following
-	 * static allocation
-	 */
-        struct scull_dev scull_dev;
 
         if (scull_major) {
                 dev = MKDEV(scull_major, scull_minor);
@@ -244,18 +259,28 @@ static int __init scull_init(void)
                 return result;
         }
 
-        printk(KERN_WARNING "scull init: scull_major %x\n", scull_major);
+	/* must call kmalloc, it's KERNEL MODE */
+	scull_devices = kmalloc(sizeof(struct scull_dev) * scull_nr_devs, GFP_KERNEL);
+	if (!scull_devices) {
+		result = -ENOMEM;
+		goto fail;
+	}
 
-        scull_setup_cdev(&scull_dev, 0);
+	for (i = 0; i < scull_nr_devs; i++) {
+		scull_devices[i].quantum = scull_quantum;
+		scull_devices[i].qset = scull_qset;
+		sema_init(&scull_devices[i].sem, 1);
+		scull_setup_cdev(&scull_devices[i], i);
+	}
 
+        printk(KERN_WARNING "scull init: scull_major %x\n", scull_major); 
         return 0;               /* succeed */
+
+fail:
+	scull_cleanup();
+	return result;
 }
 
-static void __exit scull_cleanup(void)
-{
-        dev_t devno = MKDEV(scull_major, scull_minor);
-        unregister_chrdev_region(devno, scull_nr_devs);
-}
 
 
 module_init(scull_init);
